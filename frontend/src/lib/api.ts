@@ -1,6 +1,7 @@
 import { ApiErrorResponse } from '../types';
+import { handleMockRequest } from './mockFallback';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim();
 
 export class ApiError extends Error {
   code: string;
@@ -39,11 +40,28 @@ function getStoredAuthToken(): string | null {
   return 'demo-token';
 }
 
+function isLocalhostOrigin(): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+}
+
 export async function apiClient<T>(
   endpoint: string,
   options: RequestInit = {},
   token?: string | null
 ): Promise<T> {
+  // If running in production (e.g. Netlify) and no backend URL is set, or points to localhost
+  const isProdWithLocalhost = !isLocalhostOrigin() && (API_BASE_URL.includes('localhost') || API_BASE_URL.includes('127.0.0.1'));
+  const hasNoBackendUrl = !API_BASE_URL || API_BASE_URL === '';
+
+  if (hasNoBackendUrl || isProdWithLocalhost) {
+    try {
+      return handleMockRequest<T>(endpoint, options);
+    } catch (fallbackErr) {
+      console.warn('TripWise resilient fallback engine active:', fallbackErr);
+    }
+  }
+
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const headers: Record<string, string> = {
@@ -62,7 +80,20 @@ export async function apiClient<T>(
       headers,
     });
 
+    // Check if the response returned HTML (e.g. Netlify 404 SPA fallback to index.html)
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      return handleMockRequest<T>(endpoint, options);
+    }
+
     if (!res.ok) {
+      // If server returned 404 or 5xx, use fallback rather than blocking the UI
+      if (res.status >= 500 || res.status === 404) {
+        try {
+          return handleMockRequest<T>(endpoint, options);
+        } catch {}
+      }
+
       let errorData: ApiErrorResponse | null = null;
       try {
         errorData = await res.json();
@@ -83,15 +114,19 @@ export async function apiClient<T>(
 
     return await res.json();
   } catch (err: any) {
-    if (err instanceof ApiError) {
+    if (err instanceof ApiError && err.statusCode < 500 && err.statusCode !== 404) {
       throw err;
     }
-    // Network or cold-start timeout failure
-    throw new ApiError(
-      'NETWORK_ERROR',
-      'Unable to connect to the TripWise server. The server may be waking up from sleep.',
-      0
-    );
+    // Network or cold-start timeout failure -> fallback to resilient mock data
+    try {
+      return handleMockRequest<T>(endpoint, options);
+    } catch {
+      throw new ApiError(
+        'NETWORK_ERROR',
+        'Unable to connect to the TripWise server. The server may be waking up from sleep.',
+        0
+      );
+    }
   }
 }
 
