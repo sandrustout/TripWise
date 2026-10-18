@@ -217,16 +217,16 @@ export const SearchPage: React.FC = () => {
         ]);
 
         setDestination(destData);
-        setPlaces(placesData);
+        setPlaces(Array.isArray(placesData) ? placesData : []);
         setWeather(weatherData);
-        setEvents(eventsData);
+        setEvents(Array.isArray(eventsData) ? eventsData : []);
 
         // Resolve Destination IATA
         let destIata = 'GOI';
-        if (destData.iata_codes && destData.iata_codes.length > 0) {
+        if (destData?.iata_codes && Array.isArray(destData.iata_codes) && destData.iata_codes.length > 0) {
           destIata = destData.iata_codes[0];
         } else {
-          const normName = (destData.name || destNameParam).toLowerCase().replace(/\s+/g, '_');
+          const normName = ((destData && destData.name) || destNameParam).toLowerCase().replace(/\s+/g, '_');
           destIata = CITY_TO_IATA[normName] || 'GOI';
         }
         setFlightDest(destIata);
@@ -336,15 +336,17 @@ export const SearchPage: React.FC = () => {
       const data = await apiClient<HotelResponse[]>(
         `/destinations/${dId}/hotels?sort=${hotelFilters.sortBy}&min_index=${hotelFilters.minIndex}`
       );
-      setHotels(data);
-      if (data.length > 0) {
-        const highestPrice = Math.max(...data.map(h => h.total_price_inr));
+      const safeData = Array.isArray(data) ? data : [];
+      setHotels(safeData);
+      if (safeData.length > 0) {
+        const highestPrice = Math.max(...safeData.map(h => h.total_price_inr));
         setHotelFilters(prev => ({
           ...prev,
           maxPrice: Math.max(prev.maxPrice, highestPrice)
         }));
       }
     } catch (err: any) {
+      setHotels([]);
       setHotelsError(err.message || 'Unable to retrieve verified accommodations.');
     } finally {
       setHotelsLoading(false);
@@ -359,7 +361,7 @@ export const SearchPage: React.FC = () => {
 
   // Filtered hotels based on property style & budget
   const filteredHotels = useMemo(() => {
-    let list = [...hotels];
+    let list = Array.isArray(hotels) ? [...hotels] : [];
     if (hotelFilters.category !== 'all') {
       list = list.filter(h => h.category === hotelFilters.category);
     }
@@ -391,7 +393,7 @@ export const SearchPage: React.FC = () => {
 
   // Derive unique airlines from flight data
   const availableAirlines = useMemo(() => {
-    if (!flightData?.offers) return [];
+    if (!flightData?.offers || !Array.isArray(flightData.offers)) return [];
     const map = new Map<string, { code: string; name: string; count: number; color?: string }>();
     flightData.offers.forEach(o => {
       const existing = map.get(o.airline_code);
@@ -411,7 +413,7 @@ export const SearchPage: React.FC = () => {
 
   // Filter and sort flight offers
   const filteredOffers = useMemo(() => {
-    if (!flightData?.offers) return [];
+    if (!flightData?.offers || !Array.isArray(flightData.offers)) return [];
 
     let list = [...flightData.offers];
 

@@ -48,10 +48,10 @@ export const DestinationPage: React.FC = () => {
         ]);
 
         setDestination(destData);
-        setPlaces(placesData);
+        setPlaces(Array.isArray(placesData) ? placesData : []);
         setWeather(weatherData);
-        setEvents(eventsData);
-        setDishes(foodData);
+        setEvents(Array.isArray(eventsData) ? eventsData : []);
+        setDishes(Array.isArray(foodData) ? foodData : []);
       } catch (err: any) {
         setError(err.message || 'Failed to load destination information.');
       } finally {

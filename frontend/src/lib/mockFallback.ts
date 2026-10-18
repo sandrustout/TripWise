@@ -859,18 +859,44 @@ export function handleMockRequest<T>(endpoint: string, options: RequestInit = {}
     return getFallbackFlightCalendar(date) as unknown as T;
   }
 
-  // 12. Flight booking redirect
-  if (cleanPath === '/flights/book-redirect') {
+  // 12. Flight booking (sandbox & redirect)
+  if (cleanPath === '/flights/book-sandbox' || cleanPath === '/flights/book-redirect') {
+    let pName = 'Sandru Traveler';
+    if (options.body) {
+      try {
+        const parsed = JSON.parse(options.body as string);
+        if (parsed.passengers && parsed.passengers[0]) {
+          pName = `${parsed.passengers[0].given_name || ''} ${parsed.passengers[0].family_name || ''}`.trim() || pName;
+        }
+      } catch {}
+    }
     return {
+      booking_reference: `TW-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      order_id: `ord_${Math.random().toString(36).slice(2, 10)}`,
+      status: 'confirmed',
+      airline_name: 'IndiGo / Partner',
+      flight_number: '6E-512',
+      route: 'MAA to GOI',
+      departure_time: '2026-11-15T06:45:00',
+      amount_paid_inr: 4850,
+      currency: 'INR',
+      documents: [{ type: 'electronic_ticket', number: `ETK-${Math.floor(100000000 + Math.random() * 900000000)}` }],
+      confirmation_message: `Confirmed sandbox flight booking for ${pName}. Reference is active.`,
       redirect_url: 'https://www.google.com/travel/flights',
       booking_token: 'tripwise-book-token'
     } as unknown as T;
   }
 
-  // 13. Hotels search
-  if (cleanPath.startsWith('/hotels/search') || cleanPath === '/hotels') {
-    const destName = searchParams.get('destination') || searchParams.get('city') || 'Goa';
-    return getFallbackHotels(destName) as unknown as T;
+  // 13. Hotels search & Destination hotels
+  const destHotelsMatch = cleanPath.match(/^\/destinations\/([^\/]+)\/hotels$/);
+  if (destHotelsMatch || cleanPath.startsWith('/hotels/search') || cleanPath === '/hotels') {
+    let destName = searchParams.get('destination') || searchParams.get('city');
+    if (!destName && destHotelsMatch) {
+      const destId = destHotelsMatch[1].toLowerCase();
+      const dest = FALLBACK_DESTINATIONS.find(d => d.id.toLowerCase() === destId || d.name.toLowerCase() === destId);
+      destName = dest ? dest.name : 'Goa';
+    }
+    return getFallbackHotels(destName || 'Goa') as unknown as T;
   }
 
   // 14. User Profile (/me)
@@ -1141,5 +1167,19 @@ export function handleMockRequest<T>(endpoint: string, options: RequestInit = {}
   }
 
   // Default fallback for any unhandled GET/POST
+  // Return an empty array for collection/list endpoints to guarantee iterable safety
+  if (
+    cleanPath.endsWith('s') || 
+    cleanPath.includes('/places') || 
+    cleanPath.includes('/hotels') || 
+    cleanPath.includes('/dishes') || 
+    cleanPath.includes('/food') || 
+    cleanPath.includes('/events') || 
+    cleanPath.includes('/airports') || 
+    cleanPath.includes('/search') || 
+    cleanPath.includes('/trips')
+  ) {
+    return [] as unknown as T;
+  }
   return {} as unknown as T;
 }
